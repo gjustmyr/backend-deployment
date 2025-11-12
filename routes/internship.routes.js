@@ -3,6 +3,13 @@ const router = express.Router();
 const authMiddleware = require("../utils/decode.token");
 const internshipController = require("../controllers/internship.controller");
 
+// Recommendations for student trainees
+router.get(
+	"/recommendations",
+	authMiddleware,
+	internshipController.getRecommendations
+);
+
 // Get my internships
 router.get("/my-internships", authMiddleware, internshipController.getMyInternships);
 

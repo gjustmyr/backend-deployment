@@ -12,6 +12,7 @@ const {
 	addStudentsFromExcel,
 	getDashboardStats,
 	getFilterOptions,
+	assignSupervisor,
 } = require("../controllers/ojt-coordinator.controller");
 
 // Create a new OJT Coordinator
@@ -40,5 +41,8 @@ router.get("/dashboard/stats", authMiddleware, getDashboardStats);
 
 // Get filter options for dashboard
 router.get("/dashboard/filter-options", authMiddleware, getFilterOptions);
+
+// Assign supervisor to student internship
+router.put("/student-internship/:student_internship_id/assign-supervisor", authMiddleware, assignSupervisor);
 
 module.exports = router;

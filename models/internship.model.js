@@ -17,7 +17,8 @@ module.exports = (sequelize, Sequelize) => {
 			},
 			employer_id: {
 				type: Sequelize.INTEGER,
-				allowNull: false,
+				allowNull: true,
+				comment: "Null for alumni postings, required for employer postings",
 			},
 			status: {
 				type: Sequelize.ENUM("enabled", "disabled"),

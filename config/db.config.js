@@ -1,5 +1,4 @@
 require("dotenv").config();
-
 module.exports = {
 	HOST: process.env.DB_HOST,
 	USER: process.env.DB_USER,
@@ -12,11 +11,5 @@ module.exports = {
 		min: 0,
 		acquire: 30000,
 		idle: 10000,
-	},
-	dialectOptions: {
-		ssl: {
-			require: true,
-			rejectUnauthorized: false, // allow self-signed certificates
-		},
 	},
 };

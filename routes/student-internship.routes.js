@@ -8,3 +8,5 @@ router.get("/my-internship", authMiddleware, studentInternshipController.getMySt
 
 module.exports = router;
 
+
+

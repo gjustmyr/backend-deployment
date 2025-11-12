@@ -36,45 +36,93 @@ exports.create = async (req, res) => {
 				.json({ message: "All required fields must be provided" });
 		}
 
-		// Check if email exists
-		const existingUser = await User.findOne({
-			where: { email: contact_email },
-		});
-		if (existingUser)
-			return res.status(409).json({ message: "Email already exists" });
+		// Get creator role (OJT Head or Job Placement Head)
+		const creatorRole = req.user?.role || null;
+		let newEligibility = "INTERNSHIP"; // Default eligibility
 
-		// Generate password
-		const plainPassword = generatePassword();
-		const hashedPassword = await bcrypt.hash(plainPassword, 10);
+		// Determine eligibility based on creator role
+		if (creatorRole === "ojt-head") {
+			newEligibility = "INTERNSHIP";
+		} else if (creatorRole === "job-placement-head") {
+			newEligibility = "JOB-PLACEMENT";
+		}
 
-		// Create User
-		const user = await User.create({
-			email: contact_email,
-			password: hashedPassword,
-			role: "employer",
-			is_password_reset: false,
-			status: "enabled",
+		// Check if employer already exists by company_name
+		const existingEmployer = await Employer.findOne({
+			where: { company_name },
 		});
 
-		// Create Employer
-		const employer = await Employer.create({
-			company_name,
-			company_overview,
-			contact_person,
-			contact_email,
-			contact_phone,
-			street_address,
-			city_address,
-			province_address,
-			postal_code,
-			website_url,
-			working_hours_start,
-			working_hours_end,
-			industry_id,
-			user_id: user.user_id,
-		});
+		let employer;
+		let user;
+		let plainPassword = null;
+		let isExistingEmployer = false;
 
-		// Save MOA
+		if (existingEmployer) {
+			isExistingEmployer = true;
+			// Employer exists - update eligibility logic
+			const currentEligibility = existingEmployer.eligibility;
+
+			if (currentEligibility === "INTERNSHIP" && creatorRole === "job-placement-head") {
+				// Update to BOTH if job-placement-head is adding to existing INTERNSHIP employer
+				await existingEmployer.update({ eligibility: "BOTH" });
+				employer = existingEmployer;
+			} else if (currentEligibility === "JOB-PLACEMENT" && creatorRole === "ojt-head") {
+				// Update to BOTH if ojt-head is adding to existing JOB-PLACEMENT employer
+				await existingEmployer.update({ eligibility: "BOTH" });
+				employer = existingEmployer;
+			} else if (currentEligibility === "BOTH") {
+				// Already BOTH, no change needed
+				employer = existingEmployer;
+			} else {
+				// Same eligibility, no change needed
+				employer = existingEmployer;
+			}
+
+			// Get the user associated with the employer
+			user = await User.findByPk(existingEmployer.user_id);
+		} else {
+			// Employer doesn't exist - create new employer
+			// Check if email exists
+			const existingUser = await User.findOne({
+				where: { email: contact_email },
+			});
+			if (existingUser)
+				return res.status(409).json({ message: "Email already exists" });
+
+			// Generate password
+			plainPassword = generatePassword();
+			const hashedPassword = await bcrypt.hash(plainPassword, 10);
+
+			// Create User
+			user = await User.create({
+				email: contact_email,
+				password: hashedPassword,
+				role: "employer",
+				is_password_reset: false,
+				status: "enabled",
+			});
+
+			// Create Employer with determined eligibility
+			employer = await Employer.create({
+				company_name,
+				company_overview,
+				contact_person,
+				contact_email,
+				contact_phone,
+				street_address,
+				city_address,
+				province_address,
+				postal_code,
+				website_url,
+				working_hours_start,
+				working_hours_end,
+				industry_id,
+				eligibility: newEligibility,
+				user_id: user.user_id,
+			});
+		}
+
+		// Save MOA (required for both new and existing employers)
 		const moa = await MOA.create({
 			employer_id: employer.employer_id,
 			document_url: req.file.path,
@@ -83,25 +131,37 @@ exports.create = async (req, res) => {
 			status: "active",
 		});
 
-		// Send email with credentials
-		try {
-			const name = contact_person || company_name;
-			await sendAccountCredentials({
-				recipient: contact_email,
-				name: name,
-				role: "Employer",
-				email: contact_email,
-				password: plainPassword,
-				senderName: "SPARTRACK Admin",
-			});
-		} catch (emailError) {
-			console.error("Failed to send email:", emailError);
-			// Don't fail the request if email fails, but log it
+		// Send email with credentials only for new accounts
+		if (plainPassword) {
+			try {
+				const name = contact_person || company_name;
+				await sendAccountCredentials({
+					recipient: contact_email,
+					name: name,
+					role: "Employer",
+					email: contact_email,
+					password: plainPassword,
+					senderName: "SPARTRACK Admin",
+				});
+			} catch (emailError) {
+				console.error("Failed to send email:", emailError);
+				// Don't fail the request if email fails, but log it
+			}
 		}
 
+		// Refresh employer to get updated data
+		const updatedEmployer = await Employer.findByPk(employer.employer_id, {
+			include: [
+				{ model: User, attributes: ["user_id", "email", "role"] },
+				{ model: MOA },
+			],
+		});
+
 		return res.status(201).json({
-			message: "Employer and MOA created successfully",
-			data: { employer, moa },
+			message: isExistingEmployer 
+				? "Employer eligibility updated and MOA added successfully"
+				: "Employer and MOA created successfully",
+			data: { employer: updatedEmployer, moa },
 		});
 	} catch (err) {
 		console.error(err);

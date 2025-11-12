@@ -14,3 +14,5 @@ router.get("/partners", authMiddleware, messageController.getChatPartners);
 
 module.exports = router;
 
+
+

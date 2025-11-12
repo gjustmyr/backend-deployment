@@ -74,6 +74,11 @@ module.exports = (sequelize, Sequelize) => {
 				defaultValue: "enabled",
 				allowNull: false,
 			},
+			eligibility: {
+				type: Sequelize.ENUM("BOTH", "INTERNSHIP", "JOB-PLACEMENT"),
+				allowNull: false,
+				defaultValue: "INTERNSHIP",
+			},
 			user_id: {
 				type: Sequelize.INTEGER,
 				allowNull: false,

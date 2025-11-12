@@ -3,7 +3,6 @@ const dbConfig = require("../config/db.config.js");
 const Sequelize = require("sequelize");
 const sequelize = new Sequelize(dbConfig.DB, dbConfig.USER, dbConfig.PASSWORD, {
 	host: dbConfig.HOST,
-	port: dbConfig.PORT,
 	dialect: dbConfig.dialect,
 	operatorsAliases: false,
 	pool: {
@@ -12,8 +11,8 @@ const sequelize = new Sequelize(dbConfig.DB, dbConfig.USER, dbConfig.PASSWORD, {
 		acquire: dbConfig.pool.acquire,
 		idle: dbConfig.pool.idle,
 	},
-	dialectOptions: dbConfig.dialectOptions, // ✅ this is crucial
 });
+
 const db = {};
 
 db.Sequelize = Sequelize;
@@ -26,6 +25,7 @@ db.Major = require("./major.model.js")(sequelize, Sequelize);
 db.Section = require("./section.model.js")(sequelize, Sequelize);
 db.OJTHead = require("./ojt-head.model.js")(sequelize, Sequelize);
 db.OJTCoordinator = require("./ojt-coordinator.model.js")(sequelize, Sequelize);
+db.JobPlacementHead = require("./job-placement-head.model.js")(sequelize, Sequelize);
 db.StudentTrainee = require("./student-trainee.model.js")(sequelize, Sequelize);
 db.Employer = require("./employer.model.js")(sequelize, Sequelize);
 db.Father = require("./father.model.js")(sequelize, Sequelize);
@@ -49,11 +49,18 @@ db.StudentInternship = require("./student-internship.model.js")(
 	Sequelize
 );
 db.Supervisor = require("./supervisor.model.js")(sequelize, Sequelize);
+db.Attendance = require("./attendance.model.js")(sequelize, Sequelize);
 db.OJTRequirement = require("./ojt-requirement.model.js")(sequelize, Sequelize);
 db.StudentRequirement = require("./student-requirement.model.js")(sequelize, Sequelize);
 db.Industry = require("./industry.model.js")(sequelize, Sequelize);
 db.MOA = require("./moa.model.js")(sequelize, Sequelize);
-db.Message = require("./message.model.js")(sequelize, Sequelize);
+db.Alumni = require("./alumni.model.js")(sequelize, Sequelize);
+db.JobApplication = require("./job-application.model.js")(sequelize, Sequelize);
+db.JobRequirement = require("./job-requirement.model.js")(sequelize, Sequelize);
+db.AlumniRequirementSubmission = require("./alumni-requirement-submission.model.js")(
+	sequelize,
+	Sequelize
+);
 // Associations
 db.Department.hasMany(db.Program, { foreignKey: "department_id" });
 db.Program.belongsTo(db.Department, { foreignKey: "department_id" });
@@ -90,8 +97,8 @@ db.InternshipSkill.belongsTo(db.Internship, { foreignKey: "internship_id" });
 db.Skill.hasMany(db.InternshipSkill, { foreignKey: "skill_id" });
 db.InternshipSkill.belongsTo(db.Skill, { foreignKey: "skill_id" });
 
-db.StudentSkill.hasMany(db.Skill, { foreignKey: "skill_id" });
-db.Skill.belongsTo(db.StudentSkill, { foreignKey: "skill_id" });
+db.Skill.hasMany(db.StudentSkill, { foreignKey: "skill_id" });
+db.StudentSkill.belongsTo(db.Skill, { foreignKey: "skill_id" });
 
 db.StudentTrainee.hasMany(db.StudentSkill, {
 	foreignKey: "student_trainee_id",
@@ -147,6 +154,12 @@ db.Supervisor.belongsTo(db.Employer, { foreignKey: "employer_id" });
 db.User.hasOne(db.OJTCoordinator, { foreignKey: "user_id" });
 db.OJTCoordinator.belongsTo(db.User, { foreignKey: "user_id" });
 
+db.User.hasOne(db.JobPlacementHead, { foreignKey: "user_id" });
+db.JobPlacementHead.belongsTo(db.User, { foreignKey: "user_id" });
+
+db.User.hasOne(db.Alumni, { foreignKey: "user_id" });
+db.Alumni.belongsTo(db.User, { foreignKey: "user_id" });
+
 db.Industry.hasMany(db.Employer, { foreignKey: "industry_id" });
 db.Employer.belongsTo(db.Industry, { foreignKey: "industry_id" });
 
@@ -155,6 +168,36 @@ db.MOA.belongsTo(db.Employer, { foreignKey: "employer_id" });
 
 db.Employer.hasMany(db.Internship, { foreignKey: "employer_id" });
 db.Internship.belongsTo(db.Employer, { foreignKey: "employer_id" });
+
+db.Internship.hasMany(db.JobApplication, { foreignKey: "internship_id" });
+db.JobApplication.belongsTo(db.Internship, { foreignKey: "internship_id" });
+
+db.Alumni.hasMany(db.JobApplication, { foreignKey: "alumni_id" });
+db.JobApplication.belongsTo(db.Alumni, { foreignKey: "alumni_id" });
+
+db.Internship.hasMany(db.JobRequirement, { foreignKey: "internship_id" });
+db.JobRequirement.belongsTo(db.Internship, { foreignKey: "internship_id" });
+
+db.JobRequirement.hasMany(db.AlumniRequirementSubmission, {
+	foreignKey: "job_requirement_id",
+});
+db.AlumniRequirementSubmission.belongsTo(db.JobRequirement, {
+	foreignKey: "job_requirement_id",
+});
+
+db.JobApplication.hasMany(db.AlumniRequirementSubmission, {
+	foreignKey: "job_application_id",
+});
+db.AlumniRequirementSubmission.belongsTo(db.JobApplication, {
+	foreignKey: "job_application_id",
+});
+
+db.Alumni.hasMany(db.AlumniRequirementSubmission, {
+	foreignKey: "alumni_id",
+});
+db.AlumniRequirementSubmission.belongsTo(db.Alumni, {
+	foreignKey: "alumni_id",
+});
 
 // Student Requirement Associations
 db.StudentInternship.hasMany(db.StudentRequirement, {
@@ -179,11 +222,30 @@ db.StudentRequirement.belongsTo(db.OJTCoordinator, {
 	as: "reviewer",
 });
 
-// Message Associations
-db.User.hasMany(db.Message, { foreignKey: "sender_id", as: "sentMessages" });
-db.Message.belongsTo(db.User, { foreignKey: "sender_id", as: "sender" });
+// Attendance Associations
+db.StudentInternship.hasMany(db.Attendance, {
+	foreignKey: "student_internship_id",
+});
+db.Attendance.belongsTo(db.StudentInternship, {
+	foreignKey: "student_internship_id",
+});
 
-db.User.hasMany(db.Message, { foreignKey: "receiver_id", as: "receivedMessages" });
-db.Message.belongsTo(db.User, { foreignKey: "receiver_id", as: "receiver" });
+db.Supervisor.hasMany(db.Attendance, {
+	foreignKey: "supervisor_id",
+	as: "VerifiedAttendances",
+});
+db.Attendance.belongsTo(db.Supervisor, {
+	foreignKey: "supervisor_id",
+	as: "Supervisor",
+});
+
+db.Supervisor.hasMany(db.Attendance, {
+	foreignKey: "modified_by_supervisor_id",
+	as: "ModifiedAttendances",
+});
+db.Attendance.belongsTo(db.Supervisor, {
+	foreignKey: "modified_by_supervisor_id",
+	as: "ModifyingSupervisor",
+});
 
 module.exports = db;

@@ -1,5 +1,5 @@
 const db = require("../models");
-const { User, OJTCoordinator, Department, OJTHead, StudentTrainee, StudentInternship, SemestralInternshipListing, SemestralInternship } = db;
+const { User, OJTCoordinator, Department, OJTHead, StudentTrainee, StudentInternship, SemestralInternshipListing, SemestralInternship, Supervisor } = db;
 const bcrypt = require("bcrypt");
 const generatePassword = require("../utils/password.generator");
 const { sendAccountCredentials } = require("../utils/email.service");
@@ -977,6 +977,82 @@ exports.getFilterOptions = async (req, res) => {
 		});
 	} catch (error) {
 		console.error("Error fetching filter options:", error);
+		res.status(500).json({
+			message: "Internal Server Error",
+			error: error.message,
+		});
+	}
+};
+
+// Assign supervisor to student internship
+exports.assignSupervisor = async (req, res) => {
+	try {
+		const { student_internship_id } = req.params;
+		const { supervisor_id } = req.body;
+
+		if (!supervisor_id) {
+			return res.status(400).json({ message: "Supervisor ID is required" });
+		}
+
+		// Get current coordinator
+		const coordinator = await OJTCoordinator.findOne({
+			where: { user_id: req.user.user_id },
+		});
+
+		if (!coordinator) {
+			return res.status(404).json({ message: "Coordinator not found" });
+		}
+
+		// Get student internship and verify it belongs to coordinator's sections
+		const studentInternship = await StudentInternship.findByPk(student_internship_id, {
+			include: [
+				{
+					model: SemestralInternshipListing,
+					where: { ojt_coordinator_id: coordinator.ojt_coordinator_id },
+					required: true,
+				},
+			],
+		});
+
+		if (!studentInternship) {
+			return res.status(404).json({ message: "Student internship not found or not accessible" });
+		}
+
+		// Verify supervisor exists
+		const supervisor = await Supervisor.findByPk(supervisor_id);
+		if (!supervisor) {
+			return res.status(404).json({ message: "Supervisor not found" });
+		}
+
+		// Update student internship with supervisor
+		await studentInternship.update({ supervisor_id });
+
+		// Fetch updated student internship with supervisor details
+		const updatedInternship = await StudentInternship.findByPk(student_internship_id, {
+			include: [
+				{
+					model: Supervisor,
+					include: [
+						{
+							model: Employer,
+							attributes: ["employer_id", "company_name"],
+						},
+					],
+					attributes: ["supervisor_id", "first_name", "last_name", "employer_id"],
+				},
+				{
+					model: StudentTrainee,
+					attributes: ["student_trainee_id", "first_name", "last_name"],
+				},
+			],
+		});
+
+		res.status(200).json({
+			message: "Supervisor assigned successfully",
+			data: updatedInternship,
+		});
+	} catch (error) {
+		console.error("Error assigning supervisor:", error);
 		res.status(500).json({
 			message: "Internal Server Error",
 			error: error.message,

@@ -55,6 +55,12 @@ app.use(
 );
 app.use("/api/skills", require("./routes/skill.routes"));
 app.use("/api/messages", require("./routes/message.routes"));
+app.use("/api/supervisors", require("./routes/supervisor.routes"));
+app.use("/api/student-trainees", require("./routes/student-trainee.routes"));
+app.use("/api/alumni", require("./routes/alumni.routes"));
+app.use("/api/job-placement", require("./routes/job-placement.routes"));
+app.use("/api/job-applications", require("./routes/job-application.routes"));
+app.use("/api/job-requirements", require("./routes/job-requirement.routes"));
 
 // Socket.IO authentication middleware
 io.use((socket, next) => {

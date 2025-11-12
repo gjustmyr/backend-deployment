@@ -8,8 +8,8 @@ const imageParser = parser.imageUpload;
 // Get all employers
 router.get("/", employerController.getAll);
 
-// Create employer (with Cloudinary PDF upload)
-router.post("/", parser.single("moa_file"), employerController.create);
+// Create employer (with Cloudinary PDF upload) - requires authentication to identify creator role
+router.post("/", authMiddleware, parser.single("moa_file"), employerController.create);
 
 // Profile routes - must come before /:id routes to avoid route conflicts
 // Get current employer profile

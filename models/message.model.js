@@ -45,3 +45,5 @@ module.exports = (sequelize, Sequelize) => {
 	return Message;
 };
 
+
+
