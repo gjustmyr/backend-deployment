@@ -50,12 +50,14 @@ exports.updateCurrentProfile = async (req, res) => {
 			return res.status(404).json({ message: "Supervisor profile not found" });
 		}
 
-		const { first_name, middle_name, last_name } = req.body;
+		const { first_name, middle_name, last_name, office_department } = req.body;
 
 		await supervisor.update({
 			first_name: first_name || supervisor.first_name,
 			middle_name: middle_name !== undefined ? middle_name : supervisor.middle_name,
 			last_name: last_name || supervisor.last_name,
+			office_department:
+				office_department !== undefined ? office_department : supervisor.office_department,
 		});
 
 		// Update user profile picture if provided
@@ -108,7 +110,7 @@ exports.getMyInterns = async (req, res) => {
 			where: {
 				supervisor_id: supervisor.supervisor_id,
 				status: {
-					[db.Sequelize.Op.in]: ["ongoing", "post-ojt", "completed"],
+					[db.Sequelize.Op.in]: ["ongoing", "post-ojt", "completed", "graded"],
 				},
 			},
 			include: [
@@ -193,7 +195,7 @@ exports.getCompanyInternships = async (req, res) => {
 // Create supervisor (for employer)
 exports.create = async (req, res) => {
 	try {
-		const { first_name, middle_name, last_name, email } = req.body;
+		const { first_name, middle_name, last_name, email, office_department } = req.body;
 
 		if (!first_name || !last_name || !email) {
 			return res.status(400).json({ message: "Missing required fields" });
@@ -228,14 +230,15 @@ exports.create = async (req, res) => {
 		});
 
 		// Create Supervisor
-		const supervisor = await Supervisor.create({
-			first_name,
-			middle_name: middle_name || null,
-			last_name,
-			user_id: user.user_id,
-			employer_id: employer.employer_id,
-			status: "enabled",
-		});
+	const supervisor = await Supervisor.create({
+		first_name,
+		middle_name: middle_name || null,
+		last_name,
+		user_id: user.user_id,
+		employer_id: employer.employer_id,
+		office_department: office_department || null,
+		status: "enabled",
+	});
 
 		// Send email with credentials
 		try {
@@ -314,7 +317,7 @@ exports.getByEmployer = async (req, res) => {
 exports.update = async (req, res) => {
 	try {
 		const { supervisor_id } = req.params;
-		const { first_name, middle_name, last_name } = req.body;
+		const { first_name, middle_name, last_name, office_department } = req.body;
 
 		const supervisor = await Supervisor.findByPk(supervisor_id);
 
@@ -335,6 +338,8 @@ exports.update = async (req, res) => {
 			first_name: first_name || supervisor.first_name,
 			middle_name: middle_name !== undefined ? middle_name : supervisor.middle_name,
 			last_name: last_name || supervisor.last_name,
+			office_department:
+				office_department !== undefined ? office_department : supervisor.office_department,
 		});
 
 		res.status(200).json({
@@ -549,6 +554,111 @@ exports.modifyAttendance = async (req, res) => {
 		});
 	} catch (error) {
 		console.error("Error modifying attendance:", error);
+		res.status(500).json({
+			message: "Internal Server Error",
+			error: error.message,
+		});
+	}
+};
+
+// Upload appraisal report for an intern
+exports.submitAppraisalReport = async (req, res) => {
+	try {
+		const { student_internship_id } = req.params;
+
+		if (!req.file?.path) {
+			return res.status(400).json({ message: "Appraisal report PDF is required" });
+		}
+
+		const supervisor = await Supervisor.findOne({
+			where: { user_id: req.user.user_id },
+		});
+
+		if (!supervisor) {
+			return res.status(404).json({ message: "Supervisor not found" });
+		}
+
+		const studentInternship = await StudentInternship.findOne({
+			where: {
+				student_internship_id,
+				supervisor_id: supervisor.supervisor_id,
+			},
+		});
+
+		if (!studentInternship) {
+			return res.status(404).json({ message: "Intern not found or not assigned to you" });
+		}
+
+		await studentInternship.update({
+			appraisal_report_url: req.file.path,
+			appraisal_submitted_at: new Date(),
+		});
+
+		const updatedInternship = await StudentInternship.findByPk(studentInternship.student_internship_id);
+
+		res.status(200).json({
+			message: "Appraisal report uploaded successfully",
+			data: updatedInternship,
+		});
+	} catch (error) {
+		console.error("Error uploading appraisal:", error);
+		res.status(500).json({
+			message: "Internal Server Error",
+			error: error.message,
+		});
+	}
+};
+
+// Mark intern's OJT as done (moves to post-ojt)
+exports.markInternshipAsDone = async (req, res) => {
+	try {
+		const { student_internship_id } = req.params;
+
+		const supervisor = await Supervisor.findOne({
+			where: { user_id: req.user.user_id },
+		});
+
+		if (!supervisor) {
+			return res.status(404).json({ message: "Supervisor not found" });
+		}
+
+		const studentInternship = await StudentInternship.findOne({
+			where: {
+				student_internship_id,
+				supervisor_id: supervisor.supervisor_id,
+			},
+		});
+
+		if (!studentInternship) {
+			return res.status(404).json({ message: "Intern not found or not assigned to you" });
+		}
+
+		if (!studentInternship.appraisal_report_url) {
+			return res.status(400).json({
+				message: "Upload the appraisal report before marking the OJT as done",
+			});
+		}
+
+		const allowedStatuses = ["ongoing", "completed", "post-ojt"];
+		if (!allowedStatuses.includes(studentInternship.status)) {
+			return res.status(400).json({
+				message: `Cannot mark OJT as done while status is ${studentInternship.status}`,
+			});
+		}
+
+		await studentInternship.update({
+			status: "post-ojt",
+			supervisor_marked_done_at: new Date(),
+		});
+
+		const updatedInternship = await StudentInternship.findByPk(studentInternship.student_internship_id);
+
+		res.status(200).json({
+			message: "Intern marked as completed successfully",
+			data: updatedInternship,
+		});
+	} catch (error) {
+		console.error("Error marking internship as done:", error);
 		res.status(500).json({
 			message: "Internal Server Error",
 			error: error.message,

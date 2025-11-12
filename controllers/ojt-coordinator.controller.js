@@ -1059,3 +1059,86 @@ exports.assignSupervisor = async (req, res) => {
 		});
 	}
 };
+
+// Submit raw grade for a student internship
+exports.submitRawGrade = async (req, res) => {
+	try {
+		const { student_internship_id } = req.params;
+		const { raw_grade } = req.body;
+
+		if (raw_grade === undefined || raw_grade === null) {
+			return res.status(400).json({ message: "Raw grade is required" });
+		}
+
+		const numericGrade = parseFloat(raw_grade);
+		if (Number.isNaN(numericGrade)) {
+			return res.status(400).json({ message: "Raw grade must be a number" });
+		}
+
+		if (numericGrade < 0 || numericGrade > 100) {
+			return res.status(400).json({ message: "Raw grade must be between 0 and 100" });
+		}
+
+		const coordinator = await OJTCoordinator.findOne({
+			where: { user_id: req.user.user_id },
+		});
+
+		if (!coordinator) {
+			return res.status(403).json({ message: "Only OJT Coordinators can submit raw grades" });
+		}
+
+		const studentInternship = await StudentInternship.findOne({
+			where: { student_internship_id },
+			include: [
+				{
+					model: SemestralInternshipListing,
+					attributes: ["semestral_internship_listing_id", "ojt_coordinator_id"],
+				},
+			],
+		});
+
+		if (!studentInternship) {
+			return res.status(404).json({ message: "Student internship not found" });
+		}
+
+		const listing =
+			studentInternship.SemestralInternshipListing ||
+			studentInternship.semestral_internship_listing;
+
+		if (!listing || listing.ojt_coordinator_id !== coordinator.ojt_coordinator_id) {
+			return res.status(403).json({
+				message: "You are not assigned to this student internship",
+			});
+		}
+
+		if (!studentInternship.appraisal_report_url || !studentInternship.supervisor_marked_done_at) {
+			return res.status(400).json({
+				message: "Supervisor must upload appraisal report and mark the intern as done before grading",
+			});
+		}
+
+		if (studentInternship.status !== "post-ojt" && studentInternship.status !== "completed") {
+			return res.status(400).json({
+				message: `Cannot submit raw grade while status is ${studentInternship.status}`,
+			});
+		}
+
+		await studentInternship.update({
+			raw_grade: numericGrade,
+			status: "graded",
+		});
+
+		await studentInternship.reload();
+
+		res.status(200).json({
+			message: "Raw grade submitted successfully",
+			data: studentInternship,
+		});
+	} catch (error) {
+		console.error("Error submitting raw grade:", error);
+		res.status(500).json({
+			message: "Internal Server Error",
+			error: error.message,
+		});
+	}
+};

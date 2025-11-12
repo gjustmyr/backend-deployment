@@ -151,21 +151,17 @@ exports.submitRequirement = async (req, res) => {
 		}
 
 		// Determine which requirement type should be allowed based on status
-		let allowedRequirementType = "pre-ojt";
-		if (studentInternship.status === "post-ojt") {
-			allowedRequirementType = "post-ojt";
-		} else if (studentInternship.status === "ongoing" || 
-			studentInternship.status === "completed") {
-			// Allow post-ojt requirements if status is ongoing or completed
-			allowedRequirementType = "post-ojt";
-		} else if (studentInternship.status === "pre-ojt" || 
-			studentInternship.status === "starting") {
-			allowedRequirementType = "pre-ojt";
+		const status = studentInternship.status || "application_seen";
+		const allowedRequirementTypes = new Set(["pre-ojt"]);
+
+		const postOjtStatuses = ["ongoing", "post-ojt", "completed", "graded"];
+		if (postOjtStatuses.includes(status)) {
+			allowedRequirementTypes.add("post-ojt");
 		}
 
-		if (requirement.type !== allowedRequirementType) {
-			return res.status(400).json({ 
-				message: `Cannot submit ${requirement.type} requirement. Current status (${studentInternship.status}) requires ${allowedRequirementType} requirements.` 
+		if (!allowedRequirementTypes.has(requirement.type)) {
+			return res.status(400).json({
+				message: `Cannot submit ${requirement.type} requirement while status is ${status}.`,
 			});
 		}
 

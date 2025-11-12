@@ -28,6 +28,11 @@ module.exports = (sequelize, Sequelize) => {
 				type: Sequelize.INTEGER,
 				allowNull: false,
 			},
+			office_department: {
+				type: Sequelize.STRING,
+				allowNull: true,
+				comment: "Department or office assignment for this supervisor",
+			},
 			status: {
 				type: Sequelize.ENUM("enabled", "disabled"),
 				defaultValue: "enabled",

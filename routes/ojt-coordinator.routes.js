@@ -13,6 +13,7 @@ const {
 	getDashboardStats,
 	getFilterOptions,
 	assignSupervisor,
+	submitRawGrade,
 } = require("../controllers/ojt-coordinator.controller");
 
 // Create a new OJT Coordinator
@@ -44,5 +45,12 @@ router.get("/dashboard/filter-options", authMiddleware, getFilterOptions);
 
 // Assign supervisor to student internship
 router.put("/student-internship/:student_internship_id/assign-supervisor", authMiddleware, assignSupervisor);
+
+// Submit raw grade for a student internship
+router.put(
+	"/student-internship/:student_internship_id/raw-grade",
+	authMiddleware,
+	submitRawGrade
+);
 
 module.exports = router;
