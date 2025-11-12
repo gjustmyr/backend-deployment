@@ -24,6 +24,12 @@ module.exports = (sequelize, Sequelize) => {
 				type: Sequelize.FLOAT,
 				allowNull: true,
 			},
+			ojt_hours: {
+				type: Sequelize.FLOAT,
+				allowNull: true,
+				defaultValue: 0,
+				comment: "Total OJT hours accomplished by the student",
+			},
 			status: {
 				type: Sequelize.ENUM(
 					"application_seen",

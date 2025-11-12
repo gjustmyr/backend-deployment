@@ -748,3 +748,238 @@ exports.addStudentsFromExcel = async (req, res) => {
 		});
 	}
 };
+
+// Get dashboard statistics for OJT Coordinator
+exports.getDashboardStats = async (req, res) => {
+	try {
+		// Get current coordinator
+		const coordinator = await OJTCoordinator.findOne({
+			where: { user_id: req.user.user_id },
+		});
+
+		if (!coordinator) {
+			return res.status(404).json({ message: "Coordinator not found" });
+		}
+
+		// Get filter parameters
+		const { academic_year, semestral } = req.query;
+
+		// Build filter for SemestralInternship
+		const semestralInternshipFilter = {};
+		if (academic_year && academic_year !== "all") {
+			semestralInternshipFilter.academic_year = academic_year;
+		}
+		if (semestral && semestral !== "all") {
+			semestralInternshipFilter.semestral = semestral;
+		}
+
+		// Get all listings for this coordinator
+		const hasFilters = Object.keys(semestralInternshipFilter).length > 0;
+		const listings = await SemestralInternshipListing.findAll({
+			where: { ojt_coordinator_id: coordinator.ojt_coordinator_id },
+			include: [
+				{
+					model: SemestralInternship,
+					where: hasFilters ? semestralInternshipFilter : undefined,
+					required: false, // Always include even without filters to get all listings
+					attributes: ["semestral_internship_id", "academic_year", "semestral"],
+				},
+			],
+		});
+
+		// Filter listings - first filter out any without semestral_internship, then apply filters if provided
+		let filteredListings = listings.filter((listing) => {
+			const si = listing.semestral_internship || listing.SemestralInternship;
+			return !!si; // Only include listings with valid semestral_internship
+		});
+
+		// Apply additional filters if provided
+		if (hasFilters) {
+			filteredListings = filteredListings.filter((listing) => {
+				const si = listing.semestral_internship || listing.SemestralInternship;
+				if (!si) return false;
+				if (semestralInternshipFilter.academic_year && si.academic_year !== semestralInternshipFilter.academic_year) {
+					return false;
+				}
+				if (semestralInternshipFilter.semestral && si.semestral !== semestralInternshipFilter.semestral) {
+					return false;
+				}
+				return true;
+			});
+		}
+
+		const listingIds = filteredListings.map((l) => l.semestral_internship_listing_id);
+
+		if (listingIds.length === 0) {
+			return res.status(200).json({
+				message: "Dashboard statistics retrieved successfully",
+				data: {
+					statusDistribution: {},
+					totalStudents: 0,
+					totalHours: 0,
+					averageHours: 0,
+					studentsByStatus: [],
+					studentsWithHours: [],
+				},
+			});
+		}
+
+		// Get all student internships for this coordinator's sections
+		const Op = db.Sequelize.Op;
+		const studentInternships = await StudentInternship.findAll({
+			where: {
+				semestral_internship_listing_id: { [Op.in]: listingIds },
+			},
+			include: [
+				{
+					model: StudentTrainee,
+					attributes: ["student_trainee_id", "first_name", "middle_name", "last_name"],
+				},
+			],
+			attributes: ["student_internship_id", "status", "ojt_hours", "student_trainee_id"],
+		});
+
+		// Calculate status distribution
+		const statusDistribution = {};
+		const statusCounts = {
+			application_seen: 0,
+			hired: 0,
+			starting: 0,
+			"pre-ojt": 0,
+			ongoing: 0,
+			completed: 0,
+			dropped: 0,
+			"post-ojt": 0,
+			graded: 0,
+		};
+
+		let totalHours = 0;
+		let studentsWithHoursCount = 0;
+		const studentsWithHours = [];
+		const studentsByStatus = [];
+
+		studentInternships.forEach((si) => {
+			const status = si.status || "application_seen";
+			statusCounts[status] = (statusCounts[status] || 0) + 1;
+
+			const hours = si.ojt_hours || 0;
+			if (hours > 0) {
+				totalHours += hours;
+				studentsWithHoursCount++;
+			}
+
+			// Collect students with hours
+			if (si.student_trainee) {
+				const studentName = `${si.student_trainee.first_name} ${si.student_trainee.middle_name || ""} ${si.student_trainee.last_name}`.trim();
+				
+				if (hours > 0) {
+					studentsWithHours.push({
+						student_internship_id: si.student_internship_id,
+						student_name: studentName,
+						status: status,
+						ojt_hours: hours,
+					});
+				}
+
+				studentsByStatus.push({
+					student_internship_id: si.student_internship_id,
+					student_name: studentName,
+					status: status,
+					ojt_hours: hours || 0,
+				});
+			}
+		});
+
+		// Format status distribution for pie chart
+		Object.keys(statusCounts).forEach((status) => {
+			if (statusCounts[status] > 0) {
+				statusDistribution[status] = statusCounts[status];
+			}
+		});
+
+		const averageHours = studentsWithHoursCount > 0 ? totalHours / studentsWithHoursCount : 0;
+
+		// Sort students by hours (descending)
+		studentsWithHours.sort((a, b) => b.ojt_hours - a.ojt_hours);
+
+		return res.status(200).json({
+			message: "Dashboard statistics retrieved successfully",
+			data: {
+				statusDistribution,
+				totalStudents: studentInternships.length,
+				totalHours: Math.round(totalHours * 100) / 100,
+				averageHours: Math.round(averageHours * 100) / 100,
+				studentsByStatus,
+				studentsWithHours,
+			},
+		});
+	} catch (error) {
+		console.error("Error fetching dashboard statistics:", error);
+		res.status(500).json({
+			message: "Internal Server Error",
+			error: error.message,
+		});
+	}
+};
+
+// Get filter options for dashboard (academic years and semestrals)
+exports.getFilterOptions = async (req, res) => {
+	try {
+		// Get current coordinator
+		const coordinator = await OJTCoordinator.findOne({
+			where: { user_id: req.user.user_id },
+		});
+
+		if (!coordinator) {
+			return res.status(404).json({ message: "Coordinator not found" });
+		}
+
+		// Get all listings for this coordinator
+		const listings = await SemestralInternshipListing.findAll({
+			where: { ojt_coordinator_id: coordinator.ojt_coordinator_id },
+			include: [
+				{
+					model: SemestralInternship,
+					attributes: ["academic_year", "semestral"],
+				},
+			],
+		});
+
+		// Extract unique academic years and semestrals
+		const academicYearSet = new Set();
+		const semestralSet = new Set();
+
+		listings.forEach((listing) => {
+			const si = listing.semestral_internship || listing.SemestralInternship;
+			if (si) {
+				if (si.academic_year) {
+					academicYearSet.add(si.academic_year);
+				}
+				if (si.semestral) {
+					semestralSet.add(si.semestral);
+				}
+			}
+		});
+
+		const academicYears = Array.from(academicYearSet).sort((a, b) => b.localeCompare(a));
+		const semestrals = Array.from(semestralSet);
+
+		// Sort semestrals in order: 1st Semester, 2nd Semester, Midterm
+		const semestralOrder = { "1st Semester": 1, "2nd Semester": 2, "Midterm": 3 };
+		semestrals.sort((a, b) => (semestralOrder[a] || 0) - (semestralOrder[b] || 0));
+
+		return res.status(200).json({
+			message: "Filter options retrieved successfully",
+			data: {
+				academicYears,
+				semestrals,
+			},
+		});
+	} catch (error) {
+		console.error("Error fetching filter options:", error);
+		res.status(500).json({
+			message: "Internal Server Error",
+			error: error.message,
+		});
+	}
+};

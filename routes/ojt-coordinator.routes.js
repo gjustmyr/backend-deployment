@@ -10,6 +10,8 @@ const {
 	getStudentsBySection,
 	addStudentsToSection,
 	addStudentsFromExcel,
+	getDashboardStats,
+	getFilterOptions,
 } = require("../controllers/ojt-coordinator.controller");
 
 // Create a new OJT Coordinator
@@ -32,5 +34,11 @@ router.post("/add-students-to-section", authMiddleware, addStudentsToSection);
 
 // Add students from Excel file
 router.post("/add-students-from-excel", authMiddleware, excelUpload.single("excel_file"), addStudentsFromExcel);
+
+// Get dashboard statistics for OJT Coordinator
+router.get("/dashboard/stats", authMiddleware, getDashboardStats);
+
+// Get filter options for dashboard
+router.get("/dashboard/filter-options", authMiddleware, getFilterOptions);
 
 module.exports = router;
