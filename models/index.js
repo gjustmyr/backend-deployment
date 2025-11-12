@@ -3,6 +3,7 @@ const dbConfig = require("../config/db.config.js");
 const Sequelize = require("sequelize");
 const sequelize = new Sequelize(dbConfig.DB, dbConfig.USER, dbConfig.PASSWORD, {
 	host: dbConfig.HOST,
+	port: dbConfig.PORT,
 	dialect: dbConfig.dialect,
 	operatorsAliases: false,
 	pool: {
@@ -11,8 +12,8 @@ const sequelize = new Sequelize(dbConfig.DB, dbConfig.USER, dbConfig.PASSWORD, {
 		acquire: dbConfig.pool.acquire,
 		idle: dbConfig.pool.idle,
 	},
+	dialectOptions: dbConfig.dialectOptions, // ✅ this is crucial
 });
-
 const db = {};
 
 db.Sequelize = Sequelize;
